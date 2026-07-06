@@ -7,7 +7,7 @@ Automação do fluxo semanal de certificados do projeto Carreta Digital, feita e
 2. Busca cada um na **planilha de inscrições** do estado (Google Forms), por CPF → e-mail → nome;
 3. **Gera o certificado em PDF** a partir de um template do Google Slides ou Docs, salvando na pasta do Drive do estado (substitui o Autocrat);
 4. Grava os dados do aluno + link do certificado na aba **Base de Dados**;
-5. Marca o status de cada aluno na aba de aprovados (`CERTIFICADO GERADO`, `NÃO ENCONTRADO NA INSCRIÇÃO`, `JÁ GERADO ANTERIORMENTE`).
+5. Marca o status de cada aluno na aba de aprovados (`CERTIFICADO GERADO`, `NÃO ENCONTRADO NA INSCRIÇÃO`, `NOME AMBÍGUO — PREENCHA O CPF`, `JÁ GERADO ANTERIORMENTE`).
 
 Rodar de novo é sempre seguro: alunos já processados são pulados e nunca há
 certificado duplicado.
@@ -131,7 +131,12 @@ ou trocar um template: ele confere todos os IDs sem gerar nada.
 - **Ordem de busca do aluno**: CPF (só dígitos, com zero à esquerda) →
   e-mail (minúsculas) → nome normalizado (maiúsculas, sem acentos e sem
   espaços duplicados). Se o aluno se inscreveu duas vezes, vale a inscrição
-  mais recente.
+  mais recente. Inscrições com CPF inválido (ex.: "Incompleto") continuam
+  encontráveis por e-mail e nome.
+- **Homônimos**: quando dois alunos diferentes se inscrevem com o mesmo
+  nome, a busca só por nome não gera certificado — a linha recebe o status
+  `NOME AMBÍGUO — PREENCHA O CPF` para evitar puxar os dados do aluno
+  errado. Preencha o CPF (ou e-mail) e rode de novo.
 - **Sem duplicados**: a Base de Dados guarda a chave estado + CPF (ou nome) +
   curso; alunos já registrados recebem status `JÁ GERADO ANTERIORMENTE`.
 - **Limite de tempo do Apps Script (~6 min)**: em semanas muito grandes o

@@ -69,7 +69,7 @@ function executarProcessamento(filtroEstado) {
   }
 
   const baseDados = abrirBaseDados();
-  const totais = { gerados: 0, jaExistiam: 0, naoEncontrados: 0 };
+  const totais = { gerados: 0, jaExistiam: 0, naoEncontrados: 0, ambiguos: 0 };
   const erros = [];
   let tempoEstourado = false;
 
@@ -85,7 +85,8 @@ function executarProcessamento(filtroEstado) {
   let resumo =
     'Certificados gerados: ' + totais.gerados + '\n' +
     'Já gerados anteriormente: ' + totais.jaExistiam + '\n' +
-    'Não encontrados na inscrição: ' + totais.naoEncontrados;
+    'Não encontrados na inscrição: ' + totais.naoEncontrados + '\n' +
+    'Nomes ambíguos (preencha o CPF): ' + totais.ambiguos;
   if (tempoEstourado) {
     resumo +=
       '\n\n⏱️ O limite de tempo de execução foi atingido antes do fim. ' +
@@ -151,12 +152,18 @@ function processarEstado(cfg, baseDados, totais, erros, inicio) {
     }
 
     const numeroLinha = i + 1;
-    const registro = buscarInscricao(indices, aprovado);
-    if (!registro) {
-      abaAprovados.getRange(numeroLinha, colStatus).setValue(STATUS.NAO_ENCONTRADO);
-      totais.naoEncontrados++;
+    const busca = buscarInscricao(indices, aprovado);
+    if (!busca.registro) {
+      if (busca.nomeAmbiguo) {
+        abaAprovados.getRange(numeroLinha, colStatus).setValue(STATUS.AMBIGUO);
+        totais.ambiguos++;
+      } else {
+        abaAprovados.getRange(numeroLinha, colStatus).setValue(STATUS.NAO_ENCONTRADO);
+        totais.naoEncontrados++;
+      }
       continue;
     }
+    const registro = busca.registro;
 
     const chave = chaveBaseDados(cfg.estado, registro.cpf, registro.nome, registro.curso);
     if (baseDados.chaves[chave]) {

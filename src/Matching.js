@@ -26,7 +26,7 @@ function carregarInscricoes(cfg) {
 
   const valores = aba.getDataRange().getValues();
   if (valores.length < 2) {
-    return { porCpf: {}, porEmail: {}, porNome: {} };
+    return { porCpf: {}, porEmail: {}, porNome: {}, nomesAmbiguos: {} };
   }
 
   const colunas = mapearCabecalhos(valores[0]);
@@ -43,6 +43,9 @@ function carregarInscricoes(cfg) {
   const porCpf = {};
   const porEmail = {};
   const porNome = {};
+  // Para detectar homônimos: nome normalizado -> identidades (CPF ou
+  // e-mail) distintas vistas com esse nome.
+  const identidadesPorNome = {};
 
   for (let i = 1; i < valores.length; i++) {
     const linha = valores[i];
@@ -73,31 +76,60 @@ function carregarInscricoes(cfg) {
     if (email) {
       porEmail[email] = registro;
     }
-    porNome[normalizarTexto(registro.nome)] = registro;
+
+    const nomeNormalizado = normalizarTexto(registro.nome);
+    porNome[nomeNormalizado] = registro;
+    const identidade = cpf || email || 'linha-' + i;
+    if (!identidadesPorNome[nomeNormalizado]) {
+      identidadesPorNome[nomeNormalizado] = {};
+    }
+    identidadesPorNome[nomeNormalizado][identidade] = true;
   }
 
-  return { porCpf: porCpf, porEmail: porEmail, porNome: porNome };
+  // Nomes que aparecem com mais de um CPF/e-mail são de alunos
+  // diferentes: a busca só por nome não pode decidir entre eles.
+  const nomesAmbiguos = {};
+  Object.keys(identidadesPorNome).forEach(function (nome) {
+    if (Object.keys(identidadesPorNome[nome]).length > 1) {
+      nomesAmbiguos[nome] = true;
+    }
+  });
+
+  return {
+    porCpf: porCpf,
+    porEmail: porEmail,
+    porNome: porNome,
+    nomesAmbiguos: nomesAmbiguos
+  };
 }
 
 /**
  * Procura um aprovado por frequência nas inscrições.
- * Retorna o registro da inscrição ou null se não encontrado.
+ *
+ * Retorna { registro, nomeAmbiguo }:
+ *   - registro: dados da inscrição, ou null se não encontrado;
+ *   - nomeAmbiguo: true quando o nome existe nas inscrições mas
+ *     pertence a mais de um aluno — é preciso preencher o CPF (ou
+ *     e-mail) na aba de aprovados para desempatar.
  */
 function buscarInscricao(indices, aprovado) {
   const cpf = normalizarCpf(aprovado.cpf);
   if (cpf && indices.porCpf[cpf]) {
-    return indices.porCpf[cpf];
+    return { registro: indices.porCpf[cpf], nomeAmbiguo: false };
   }
 
   const email = normalizarEmail(aprovado.email);
   if (email && indices.porEmail[email]) {
-    return indices.porEmail[email];
+    return { registro: indices.porEmail[email], nomeAmbiguo: false };
   }
 
   const nome = normalizarTexto(aprovado.nome);
   if (nome && indices.porNome[nome]) {
-    return indices.porNome[nome];
+    if (indices.nomesAmbiguos[nome]) {
+      return { registro: null, nomeAmbiguo: true };
+    }
+    return { registro: indices.porNome[nome], nomeAmbiguo: false };
   }
 
-  return null;
+  return { registro: null, nomeAmbiguo: false };
 }

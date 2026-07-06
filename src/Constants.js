@@ -59,7 +59,10 @@ const APROVADOS_COLS = {
 const STATUS = {
   GERADO: 'CERTIFICADO GERADO',
   JA_EXISTIA: 'JÁ GERADO ANTERIORMENTE',
-  NAO_ENCONTRADO: 'NÃO ENCONTRADO NA INSCRIÇÃO'
+  NAO_ENCONTRADO: 'NÃO ENCONTRADO NA INSCRIÇÃO',
+  // Existe mais de um aluno inscrito com esse mesmo nome; sem o CPF
+  // (ou e-mail) não dá para saber qual é o certo.
+  AMBIGUO: 'NOME AMBÍGUO — PREENCHA O CPF'
 };
 
 // Cabeçalhos da aba Base de Dados (criada automaticamente)
