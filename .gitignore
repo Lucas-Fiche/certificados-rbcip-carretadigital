@@ -1,0 +1,5 @@
+# clasp — contém o Script ID do seu projeto; use .clasp.json.example como base
+.clasp.json
+.clasprc.json
+
+node_modules/
