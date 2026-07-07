@@ -69,7 +69,7 @@ function executarProcessamento(filtroEstado) {
   }
 
   const baseDados = abrirBaseDados();
-  const totais = { gerados: 0, jaExistiam: 0, naoEncontrados: 0, ambiguos: 0 };
+  const totais = { gerados: 0, jaExistiam: 0, naoEncontrados: 0, comAviso: 0 };
   const erros = [];
   let tempoEstourado = false;
 
@@ -86,7 +86,7 @@ function executarProcessamento(filtroEstado) {
     'Certificados gerados: ' + totais.gerados + '\n' +
     'Já gerados anteriormente: ' + totais.jaExistiam + '\n' +
     'Não encontrados na inscrição: ' + totais.naoEncontrados + '\n' +
-    'Nomes ambíguos (preencha o CPF): ' + totais.ambiguos;
+    'Gerados com aviso de homônimo (ver Observações): ' + totais.comAviso;
   if (tempoEstourado) {
     resumo +=
       '\n\n⏱️ O limite de tempo de execução foi atingido antes do fim. ' +
@@ -128,6 +128,7 @@ function processarEstado(cfg, baseDados, totais, erros, inicio) {
 
   const colStatus = garantirColuna(abaAprovados, colunas, APROVADOS_COLS.STATUS);
   const colLink = garantirColuna(abaAprovados, colunas, APROVADOS_COLS.LINK);
+  const colObs = garantirColuna(abaAprovados, colunas, APROVADOS_COLS.OBS);
 
   const indices = carregarInscricoes(cfg);
 
@@ -175,13 +176,8 @@ function processarEstado(cfg, baseDados, totais, erros, inicio) {
     const numeroLinha = i + 1;
     const busca = buscarInscricao(indices, aprovado);
     if (!busca.registro) {
-      if (busca.nomeAmbiguo) {
-        abaAprovados.getRange(numeroLinha, colStatus).setValue(STATUS.AMBIGUO);
-        totais.ambiguos++;
-      } else {
-        abaAprovados.getRange(numeroLinha, colStatus).setValue(STATUS.NAO_ENCONTRADO);
-        totais.naoEncontrados++;
-      }
+      abaAprovados.getRange(numeroLinha, colStatus).setValue(STATUS.NAO_ENCONTRADO);
+      totais.naoEncontrados++;
       continue;
     }
     // No certificado e na base valem a semana, a escola e o curso da
@@ -196,6 +192,11 @@ function processarEstado(cfg, baseDados, totais, erros, inicio) {
     const chave = chaveBaseDados(cfg.estado, registro.cpf, registro.nome, registro.curso);
     if (baseDados.chaves[chave]) {
       abaAprovados.getRange(numeroLinha, colStatus).setValue(STATUS.JA_EXISTIA);
+      if (busca.aviso) {
+        // Dois aprovados homônimos no mesmo curso caem aqui: o segundo
+        // é tratado como duplicado. O aviso permite identificar o caso.
+        abaAprovados.getRange(numeroLinha, colObs).setValue(busca.aviso);
+      }
       totais.jaExistiam++;
       continue;
     }
@@ -205,6 +206,10 @@ function processarEstado(cfg, baseDados, totais, erros, inicio) {
       registrarNaBase(baseDados, cfg, registro, link);
       abaAprovados.getRange(numeroLinha, colStatus).setValue(STATUS.GERADO);
       abaAprovados.getRange(numeroLinha, colLink).setValue(link);
+      if (busca.aviso) {
+        abaAprovados.getRange(numeroLinha, colObs).setValue(busca.aviso);
+        totais.comAviso++;
+      }
       totais.gerados++;
     } catch (erro) {
       erros.push(cfg.estado + ' / ' + aprovado.nome + ': ' + erro.message);

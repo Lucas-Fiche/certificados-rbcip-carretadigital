@@ -4,10 +4,10 @@ Automação do fluxo semanal de certificados do projeto Carreta Digital, feita e
 **Google Apps Script**. Em uma única execução, para os 9 estados, o script:
 
 1. Lê os alunos **aprovados por frequência** (lista que você preenche a partir da chamada, com Semana, Escola, Curso e Nome);
-2. Busca cada um **pelo nome** na **planilha de inscrições** do estado (Google Forms) — homônimos são desempatados pelo curso;
+2. Busca cada um **pelo nome** na **planilha de inscrições** do estado (Google Forms) — havendo mais de uma inscrição com o mesmo nome, vale sempre a mais recente;
 3. **Gera o certificado em PDF** a partir de um template do Google Slides ou Docs, salvando na pasta do Drive do estado (substitui o Autocrat);
 4. Grava os dados do aluno + link do certificado na aba **Base de Dados**;
-5. Marca o status de cada aluno na lista de aprovados (`CERTIFICADO GERADO`, `NÃO ENCONTRADO NA INSCRIÇÃO`, `NOME AMBÍGUO — CONFIRA O CURSO OU PREENCHA O CPF`, `JÁ GERADO ANTERIORMENTE`).
+5. Marca o status de cada aluno na lista de aprovados (`CERTIFICADO GERADO`, `NÃO ENCONTRADO NA INSCRIÇÃO`, `JÁ GERADO ANTERIORMENTE`) e, quando o mesmo nome tem mais de uma inscrição com CPF/e-mail diferentes, registra um aviso na coluna `Observações`.
 
 Rodar de novo é sempre seguro: alunos já processados são pulados e nunca há
 certificado duplicado.
@@ -44,17 +44,18 @@ Crie um Google Sheets novo (a "planilha mestre") com as abas abaixo.
 - **Nome** é obrigatório e é a chave da busca: escreva-o o mais parecido
   possível com o que o aluno digitou na inscrição (maiúsculas/minúsculas,
   acentos e espaços extras não importam; abreviações e sobrenomes faltando
-  importam).
-- **Curso** serve para desempatar alunos homônimos e é o curso que sai no
-  certificado — pode ser escrito de forma resumida (ex.: `PC Gamer`), o
-  script compara por "contém" com o nome completo do curso no Forms.
+  importam). Se houver mais de uma inscrição com o mesmo nome, o script usa
+  sempre **a mais recente** (pelo Carimbo de data/hora).
+- **Curso** é o que sai no certificado (o curso da chamada, não o da
+  inscrição, que os alunos às vezes preenchem errado).
 - **Semana** e **Escola** vão para a Base de Dados e podem aparecer no
   certificado via placeholders.
 - Colunas opcionais: **Estado** (permite juntar todos os estados numa aba
   única — cada linha da Config processa só as linhas do seu estado),
-  **CPF** e **E-mail** (desempatam homônimos que fazem o mesmo curso).
-- As colunas **Status** e **Link do Certificado** são criadas e preenchidas
-  automaticamente pelo script.
+  **CPF** e **E-mail** (quando preenchidos, têm prioridade sobre o nome
+  na busca).
+- As colunas **Status**, **Link do Certificado** e **Observações** são
+  criadas e preenchidas automaticamente pelo script.
 
 Você pode organizar como preferir: uma planilha própria só para os aprovados
 (com uma aba por estado, ou uma aba única com a coluna Estado) apontada pela
@@ -139,11 +140,12 @@ O Script ID fica em **Apps Script → Configurações do projeto**.
 2. Menu **🎓 Certificados → Processar todos os estados** (ou
    **Processar um estado...** para rodar só um).
 3. Ao final, um resumo mostra quantos certificados foram gerados, quantos já
-   existiam, quantos alunos não foram encontrados e quantos nomes ficaram
-   ambíguos.
+   existiam, quantos alunos não foram encontrados e quantos foram gerados
+   com aviso de homônimo.
 4. Revise as linhas marcadas `NÃO ENCONTRADO NA INSCRIÇÃO` (grafia do nome
-   diferente da inscrição) e `NOME AMBÍGUO` (confira o curso ou preencha o
-   CPF/e-mail) e rode de novo — só as pendências são reprocessadas.
+   diferente da inscrição), corrija e rode de novo — só as pendências são
+   reprocessadas. Linhas com texto na coluna `Observações` merecem uma
+   conferida, mas o certificado já foi gerado.
 
 Use **🎓 Certificados → Validar configuração** sempre que adicionar um estado
 ou trocar um template: ele confere todos os IDs sem gerar nada.
@@ -151,14 +153,15 @@ ou trocar um template: ele confere todos os IDs sem gerar nada.
 ## 6. Detalhes de funcionamento
 
 - **Busca do aluno**: pelo nome normalizado (maiúsculas, sem acentos e sem
-  espaços duplicados). Se CPF ou e-mail estiverem preenchidos na lista de
-  aprovados, eles têm prioridade por serem únicos. Se o aluno se inscreveu
-  duas vezes, vale a inscrição mais recente.
-- **Homônimos**: quando dois alunos diferentes se inscrevem com o mesmo
-  nome, o curso da lista de aprovados desempata. Se ainda assim empatar
-  (mesmo nome e mesmo curso), a linha recebe o status `NOME AMBÍGUO` em vez
-  de arriscar puxar os dados do aluno errado — desempate preenchendo o
-  CPF ou e-mail e rode de novo.
+  espaços duplicados). Havendo mais de uma inscrição com o mesmo nome, vale
+  sempre a **mais recente** pelo Carimbo de data/hora. Se CPF ou e-mail
+  estiverem preenchidos na lista de aprovados, eles têm prioridade por
+  serem únicos.
+- **Aviso de homônimo**: se o mesmo nome aparece nas inscrições com
+  CPFs/e-mails diferentes entre si, podem ser dois alunos distintos. O
+  certificado sai normalmente com os dados da inscrição mais recente, e a
+  coluna `Observações` recebe um aviso para conferência. Para forçar um
+  aluno específico, preencha o CPF ou e-mail na linha e reprocesse.
 - **Semana, Escola e Curso** do certificado e da Base de Dados vêm da lista
   de aprovados (o que o aluno de fato frequentou); os dados pessoais vêm
   da inscrição.
@@ -177,6 +180,6 @@ ou trocar um template: ele confere todos os IDs sem gerar nada.
 |---------|----------------|
 | "A aba Config não foi encontrada" | A aba de configuração não se chama exatamente `Config`. |
 | Muitos `NÃO ENCONTRADO NA INSCRIÇÃO` | O nome anotado na chamada está abreviado ou faltando sobrenome em relação ao que o aluno digitou no Forms. Complete o nome e rode de novo. |
-| `NOME AMBÍGUO` | Mais de um aluno inscrito com esse nome no mesmo curso. Preencha a coluna CPF ou E-mail da linha para desempatar. |
+| Aviso de homônimo em `Observações` | O mesmo nome tem inscrições com CPF/e-mail diferentes (possíveis alunos distintos). O certificado saiu com a inscrição mais recente; para trocar, preencha o CPF ou E-mail da linha e reprocesse. |
 | "não foi possível abrir a planilha/pasta/template" | ID errado na aba Config ou a conta que autorizou o script não tem acesso ao arquivo. Use **Validar configuração** para localizar. |
 | O menu 🎓 não aparece | Recarregue a planilha; se persistir, confira se os arquivos foram colados no Apps Script e salvos. |

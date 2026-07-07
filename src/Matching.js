@@ -1,17 +1,16 @@
 /**
  * Carregamento das inscrições e cruzamento com os aprovados por frequência.
  *
- * A busca principal é por NOME normalizado (maiúsculas, sem acentos,
- * sem espaços extras). Quando existe mais de um aluno inscrito com o
- * mesmo nome (homônimos), o CURSO informado na lista de aprovados
- * desempata; se ainda assim houver empate, a linha é marcada como
- * ambígua para revisão manual (preencher CPF ou e-mail resolve).
+ * A busca é por NOME normalizado (maiúsculas, sem acentos, sem espaços
+ * extras). Quando existe mais de uma inscrição com o mesmo nome, vale
+ * sempre a MAIS RECENTE (pelo Carimbo de data/hora) — os dados do aluno
+ * não mudam entre inscrições. Se as inscrições repetidas tiverem
+ * CPF/e-mail diferentes entre si (possíveis alunos homônimos), o
+ * certificado sai normalmente e a linha recebe um aviso na coluna
+ * Observações para conferência.
  *
  * CPF e e-mail, quando preenchidos na lista de aprovados, têm
  * prioridade sobre o nome por serem únicos por aluno.
- *
- * Quando o mesmo aluno se inscreve mais de uma vez, vale a inscrição
- * mais recente (última linha da planilha do Forms).
  */
 
 /**
@@ -44,11 +43,10 @@ function carregarInscricoes(cfg) {
     return nomeColuna in colunas ? linha[colunas[nomeColuna]] : '';
   };
 
+  // Cada índice guarda { registro, tempo } e mantém sempre a inscrição
+  // mais recente para a mesma chave.
   const porCpf = {};
   const porEmail = {};
-  // Nome normalizado -> lista de inscrições. Cada item da lista é um
-  // aluno possivelmente diferente (homônimo); inscrições repetidas do
-  // mesmo aluno substituem a anterior (vale a mais recente).
   const porNome = {};
 
   for (let i = 1; i < valores.length; i++) {
@@ -71,35 +69,39 @@ function carregarInscricoes(cfg) {
       continue;
     }
 
-    // A inscrição mais recente sobrescreve as anteriores de propósito.
+    const tempo = tempoDaInscricao(pegar(linha, INSCRICAO_COLS.TIMESTAMP), i);
     const cpf = normalizarCpf(registro.cpf);
-    if (cpf) {
-      porCpf[cpf] = registro;
-    }
     const email = normalizarEmail(registro.email);
+
+    if (cpf) {
+      guardarMaisRecente(porCpf, cpf, registro, tempo);
+    }
     if (email) {
-      porEmail[email] = registro;
+      guardarMaisRecente(porEmail, email, registro, tempo);
     }
 
-    // Dois registros com o mesmo nome são considerados o mesmo aluno
-    // (re-inscrição) quando têm o mesmo CPF/e-mail — ou, na falta dos
-    // dois, o mesmo curso. Caso contrário, são homônimos.
     const nomeNormalizado = normalizarTexto(registro.nome);
-    const identidade = cpf || email || 'CURSO|' + normalizarTexto(registro.curso);
-    if (!porNome[nomeNormalizado]) {
-      porNome[nomeNormalizado] = [];
-    }
-    const lista = porNome[nomeNormalizado];
-    let substituido = false;
-    for (let j = 0; j < lista.length; j++) {
-      if (lista[j].identidade === identidade) {
-        lista[j].registro = registro; // inscrição mais recente vence
-        substituido = true;
-        break;
-      }
-    }
-    if (!substituido) {
-      lista.push({ identidade: identidade, registro: registro });
+    const entrada = porNome[nomeNormalizado];
+    // Inscrições repetidas com o mesmo nome mas CPF/e-mail diferentes
+    // podem ser alunos homônimos: o certificado sai com os dados da
+    // inscrição mais recente, mas a linha recebe um aviso.
+    const homonimo = Boolean(
+      entrada &&
+      ((cpf && entrada.cpf && cpf !== entrada.cpf) ||
+        (!cpf && email && entrada.email && email !== entrada.email))
+    );
+    if (!entrada || tempo >= entrada.tempo) {
+      porNome[nomeNormalizado] = {
+        registro: registro,
+        tempo: tempo,
+        cpf: cpf || (entrada ? entrada.cpf : ''),
+        email: email || (entrada ? entrada.email : ''),
+        homonimo: homonimo || Boolean(entrada && entrada.homonimo)
+      };
+    } else {
+      entrada.homonimo = entrada.homonimo || homonimo;
+      entrada.cpf = entrada.cpf || cpf;
+      entrada.email = entrada.email || email;
     }
   }
 
@@ -107,51 +109,70 @@ function carregarInscricoes(cfg) {
 }
 
 /**
+ * Guarda em indice[chave] a inscrição de tempo mais recente.
+ */
+function guardarMaisRecente(indice, chave, registro, tempo) {
+  if (!indice[chave] || tempo >= indice[chave].tempo) {
+    indice[chave] = { registro: registro, tempo: tempo };
+  }
+}
+
+/**
+ * Converte o Carimbo de data/hora em um número comparável.
+ * Aceita Date (célula de data do Sheets) ou texto "dd/mm/aaaa hh:mm:ss".
+ * Sem data válida, usa a posição da linha (as respostas do Forms já
+ * chegam em ordem cronológica).
+ */
+function tempoDaInscricao(valor, indiceLinha) {
+  if (valor instanceof Date) {
+    return valor.getTime();
+  }
+  const m = String(valor == null ? '' : valor)
+    .trim()
+    .match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (m) {
+    return new Date(
+      Number(m[3]), Number(m[2]) - 1, Number(m[1]),
+      Number(m[4]), Number(m[5]), Number(m[6] || 0)
+    ).getTime();
+  }
+  return indiceLinha;
+}
+
+// Texto do aviso gravado na coluna Observações quando o mesmo nome
+// aparece com CPFs/e-mails diferentes nas inscrições.
+const AVISO_HOMONIMO =
+  'Havia mais de uma inscrição com este nome (possíveis homônimos); ' +
+  'foram usados os dados da inscrição mais recente. Confira se necessário.';
+
+/**
  * Procura um aprovado por frequência nas inscrições.
  *
- * Retorna { registro, nomeAmbiguo }:
- *   - registro: dados da inscrição, ou null se não encontrado;
- *   - nomeAmbiguo: true quando o nome pertence a mais de um aluno e o
- *     curso informado na lista de aprovados não bastou para desempatar.
+ * Retorna { registro, aviso }:
+ *   - registro: dados da inscrição mais recente, ou null se o nome não
+ *     foi encontrado;
+ *   - aviso: texto para a coluna Observações ('' quando não há o que
+ *     avisar).
  */
 function buscarInscricao(indices, aprovado) {
   // CPF e e-mail são únicos por aluno: quando preenchidos, decidem.
   const cpf = normalizarCpf(aprovado.cpf);
   if (cpf && indices.porCpf[cpf]) {
-    return { registro: indices.porCpf[cpf], nomeAmbiguo: false };
+    return { registro: indices.porCpf[cpf].registro, aviso: '' };
   }
 
   const email = normalizarEmail(aprovado.email);
   if (email && indices.porEmail[email]) {
-    return { registro: indices.porEmail[email], nomeAmbiguo: false };
+    return { registro: indices.porEmail[email].registro, aviso: '' };
   }
 
   const nome = normalizarTexto(aprovado.nome);
-  const candidatos = (nome && indices.porNome[nome]) || [];
-  if (candidatos.length === 0) {
-    return { registro: null, nomeAmbiguo: false };
+  const entrada = nome ? indices.porNome[nome] : null;
+  if (!entrada) {
+    return { registro: null, aviso: '' };
   }
-  if (candidatos.length === 1) {
-    return { registro: candidatos[0].registro, nomeAmbiguo: false };
-  }
-
-  // Homônimos: tenta desempatar pelo curso da chamada. A comparação é
-  // por "contém" nos dois sentidos, porque o curso digitado na chamada
-  // costuma ser mais curto que o nome completo do curso no Forms
-  // (ex.: "PC Gamer" vs "Montagem e Configuração ... (PC GAMER)").
-  const curso = normalizarTexto(aprovado.curso);
-  if (curso) {
-    const doMesmoCurso = candidatos.filter(function (item) {
-      const cursoInscricao = normalizarTexto(item.registro.curso);
-      if (!cursoInscricao) {
-        return false;
-      }
-      return cursoInscricao.indexOf(curso) !== -1 || curso.indexOf(cursoInscricao) !== -1;
-    });
-    if (doMesmoCurso.length === 1) {
-      return { registro: doMesmoCurso[0].registro, nomeAmbiguo: false };
-    }
-  }
-
-  return { registro: null, nomeAmbiguo: true };
+  return {
+    registro: entrada.registro,
+    aviso: entrada.homonimo ? AVISO_HOMONIMO : ''
+  };
 }

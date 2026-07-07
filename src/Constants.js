@@ -47,9 +47,10 @@ const INSCRICAO_COLS = {
 
 // Cabeçalhos esperados nas abas de aprovados por frequência
 // (preenchidas manualmente a partir da chamada).
-// Nome é obrigatório. Curso desempata alunos homônimos. Estado, CPF e
-// E-mail são opcionais: Estado permite juntar todos os estados numa aba
-// só; CPF/E-mail desempatam homônimos que fazem o mesmo curso.
+// Nome é obrigatório e é a chave da busca. Estado, CPF e E-mail são
+// opcionais: Estado permite juntar todos os estados numa aba só;
+// CPF/E-mail, quando preenchidos, têm prioridade sobre o nome.
+// Status, Link e Observações são preenchidos pelo script.
 const APROVADOS_COLS = {
   SEMANA: 'Semana',
   ESCOLA: 'Escola',
@@ -59,17 +60,15 @@ const APROVADOS_COLS = {
   CPF: 'CPF',
   EMAIL: 'E-mail',
   STATUS: 'Status',
-  LINK: 'Link do Certificado'
+  LINK: 'Link do Certificado',
+  OBS: 'Observações'
 };
 
 // Valores possíveis da coluna Status nas abas de aprovados
 const STATUS = {
   GERADO: 'CERTIFICADO GERADO',
   JA_EXISTIA: 'JÁ GERADO ANTERIORMENTE',
-  NAO_ENCONTRADO: 'NÃO ENCONTRADO NA INSCRIÇÃO',
-  // Existe mais de um aluno inscrito com esse mesmo nome e o curso
-  // informado não bastou para desempatar.
-  AMBIGUO: 'NOME AMBÍGUO — CONFIRA O CURSO OU PREENCHA O CPF'
+  NAO_ENCONTRADO: 'NÃO ENCONTRADO NA INSCRIÇÃO'
 };
 
 // Cabeçalhos da aba Base de Dados (criada automaticamente)
