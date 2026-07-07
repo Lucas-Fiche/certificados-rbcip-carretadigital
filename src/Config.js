@@ -2,7 +2,8 @@
  * Leitura e validação da aba Config da planilha mestre.
  *
  * Cada linha da aba Config descreve um estado:
- *   Estado | ID Planilha de Inscrições | Aba de Inscrições | Aba de Aprovados
+ *   Estado | ID Planilha de Inscrições | Aba de Inscrições
+ *   | ID Planilha de Aprovados | Aba de Aprovados
  *   | ID da Pasta no Drive | ID do Template | Ativo
  */
 
@@ -55,6 +56,9 @@ function lerConfiguracoes() {
       idInscricoes: String(linha[colunas[CONFIG_COLS.ID_INSCRICOES]] || '').trim(),
       abaInscricoes: CONFIG_COLS.ABA_INSCRICOES in colunas
         ? String(linha[colunas[CONFIG_COLS.ABA_INSCRICOES]] || '').trim()
+        : '',
+      idAprovados: CONFIG_COLS.ID_APROVADOS in colunas
+        ? String(linha[colunas[CONFIG_COLS.ID_APROVADOS]] || '').trim()
         : '',
       abaAprovados: CONFIG_COLS.ABA_APROVADOS in colunas &&
         String(linha[colunas[CONFIG_COLS.ABA_APROVADOS]] || '').trim()
@@ -109,9 +113,19 @@ function validarConfiguracao() {
       problemas.push(cfg.estado + ': não foi possível abrir a planilha de inscrições (' + erro.message + ').');
     }
 
-    // Aba de aprovados na planilha mestre
-    if (!planilhaMestre.getSheetByName(cfg.abaAprovados)) {
-      problemas.push(cfg.estado + ': aba de aprovados "' + cfg.abaAprovados + '" não existe nesta planilha.');
+    // Aba de aprovados (na planilha própria, se configurada, ou na mestre)
+    try {
+      const planilhaAprovados = cfg.idAprovados
+        ? SpreadsheetApp.openById(cfg.idAprovados)
+        : planilhaMestre;
+      if (!planilhaAprovados.getSheetByName(cfg.abaAprovados)) {
+        problemas.push(
+          cfg.estado + ': aba de aprovados "' + cfg.abaAprovados + '" não existe na planilha ' +
+          (cfg.idAprovados ? 'de aprovados configurada.' : 'mestre.')
+        );
+      }
+    } catch (erro) {
+      problemas.push(cfg.estado + ': não foi possível abrir a planilha de aprovados (' + cfg.idAprovados + ').');
     }
 
     // Pasta de destino

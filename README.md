@@ -3,11 +3,11 @@
 Automação do fluxo semanal de certificados do projeto Carreta Digital, feita em
 **Google Apps Script**. Em uma única execução, para os 9 estados, o script:
 
-1. Lê os alunos **aprovados por frequência** (que você cola em abas da planilha mestre);
-2. Busca cada um na **planilha de inscrições** do estado (Google Forms), por CPF → e-mail → nome;
+1. Lê os alunos **aprovados por frequência** (lista que você preenche a partir da chamada, com Semana, Escola, Curso e Nome);
+2. Busca cada um **pelo nome** na **planilha de inscrições** do estado (Google Forms) — homônimos são desempatados pelo curso;
 3. **Gera o certificado em PDF** a partir de um template do Google Slides ou Docs, salvando na pasta do Drive do estado (substitui o Autocrat);
 4. Grava os dados do aluno + link do certificado na aba **Base de Dados**;
-5. Marca o status de cada aluno na aba de aprovados (`CERTIFICADO GERADO`, `NÃO ENCONTRADO NA INSCRIÇÃO`, `NOME AMBÍGUO — PREENCHA O CPF`, `JÁ GERADO ANTERIORMENTE`).
+5. Marca o status de cada aluno na lista de aprovados (`CERTIFICADO GERADO`, `NÃO ENCONTRADO NA INSCRIÇÃO`, `NOME AMBÍGUO — CONFIRA O CURSO OU PREENCHA O CPF`, `JÁ GERADO ANTERIORMENTE`).
 
 Rodar de novo é sempre seguro: alunos já processados são pulados e nunca há
 certificado duplicado.
@@ -20,29 +20,46 @@ Crie um Google Sheets novo (a "planilha mestre") com as abas abaixo.
 
 ### Aba `Config` — uma linha por estado
 
-| Estado | ID Planilha de Inscrições | Aba de Inscrições | Aba de Aprovados | ID da Pasta no Drive | ID do Template | Ativo |
-|--------|---------------------------|-------------------|------------------|----------------------|----------------|-------|
-| CE     | 1AbC...xyz                | Respostas ao formulário 1 | Aprovados - CE | 1DeF...uvw | 1GhI...rst | SIM |
-| BA     | ...                       |                   |                  | ...                  | ...            | SIM |
+| Estado | ID Planilha de Inscrições | Aba de Inscrições | ID Planilha de Aprovados | Aba de Aprovados | ID da Pasta no Drive | ID do Template | Ativo |
+|--------|---------------------------|-------------------|--------------------------|------------------|----------------------|----------------|-------|
+| Maranhão | 1AbC...xyz              | Respostas ao formulário 1 | 1JkL...mno | Aprovados - Maranhão | 1DeF...uvw | 1GhI...rst | SIM |
+| Roraima  | ...                     |                   | 1JkL...mno | Aprovados - Roraima  | ...        | ...        | SIM |
 
 - **ID Planilha de Inscrições**: o trecho da URL entre `/d/` e `/edit` da planilha gerada pelo Forms.
 - **Aba de Inscrições**: opcional; se vazio, usa a primeira aba da planilha.
+- **ID Planilha de Aprovados**: opcional; ID da planilha onde está a lista de
+  aprovados por frequência. Se vazio, o script procura a aba na própria
+  planilha mestre.
 - **Aba de Aprovados**: opcional; se vazio, usa `Aprovados - {Estado}`.
 - **ID da Pasta no Drive**: o trecho final da URL da pasta onde os PDFs devem ser salvos.
 - **ID do Template**: ID do arquivo Google Slides ou Docs do certificado.
 - **Ativo**: `SIM` ou `NÃO` — permite pausar um estado sem apagar a linha.
 
-### Abas de aprovados — uma por estado (ex.: `Aprovados - CE`)
+### Lista de aprovados por frequência (preenchida a partir da chamada)
 
-| Nome | CPF | E-mail |
-|------|-----|--------|
-| Maria da Silva | 012.345.678-90 | maria@email.com |
+| Semana | Escola | Curso | Nome |
+|--------|--------|-------|------|
+| 12/05 a 16/05 | E.E. Santos Dumont | PC Gamer | Maria da Silva |
 
-- **Nome** é obrigatório. **CPF** e **E-mail** são opcionais, mas deixam o
-  cruzamento muito mais confiável — priorize preencher o CPF.
+- **Nome** é obrigatório e é a chave da busca: escreva-o o mais parecido
+  possível com o que o aluno digitou na inscrição (maiúsculas/minúsculas,
+  acentos e espaços extras não importam; abreviações e sobrenomes faltando
+  importam).
+- **Curso** serve para desempatar alunos homônimos e é o curso que sai no
+  certificado — pode ser escrito de forma resumida (ex.: `PC Gamer`), o
+  script compara por "contém" com o nome completo do curso no Forms.
+- **Semana** e **Escola** vão para a Base de Dados e podem aparecer no
+  certificado via placeholders.
+- Colunas opcionais: **Estado** (permite juntar todos os estados numa aba
+  única — cada linha da Config processa só as linhas do seu estado),
+  **CPF** e **E-mail** (desempatam homônimos que fazem o mesmo curso).
 - As colunas **Status** e **Link do Certificado** são criadas e preenchidas
   automaticamente pelo script.
-- Toda semana, basta colar os novos aprovados nessas abas.
+
+Você pode organizar como preferir: uma planilha própria só para os aprovados
+(com uma aba por estado, ou uma aba única com a coluna Estado) apontada pela
+coluna "ID Planilha de Aprovados" da Config, ou abas dentro da própria
+planilha mestre.
 
 ### Aba `Base de Dados`
 
@@ -75,9 +92,11 @@ Docs** com placeholders no texto, escritos exatamente assim:
 
 | Placeholder | Substituído por |
 |-------------|-----------------|
-| `{{nome}}` | Nome Formatado |
-| `{{curso}}` | Curso escolhido na inscrição |
+| `{{nome}}` | Nome Formatado (da inscrição) |
+| `{{curso}}` | Curso da lista de aprovados (da chamada) |
 | `{{estado}}` | Estado (coluna da aba Config) |
+| `{{semana}}` | Semana da lista de aprovados |
+| `{{escola}}` | Escola da lista de aprovados |
 | `{{cpf}}` | CPF Formatado |
 | `{{email}}` | E-mail |
 | `{{telefone}}` | Telefone Formatado |
@@ -115,28 +134,34 @@ O Script ID fica em **Apps Script → Configurações do projeto**.
 
 ## 5. Uso semanal
 
-1. Cole os aprovados por frequência da semana nas abas `Aprovados - {Estado}`.
+1. Preencha os aprovados por frequência da semana (Semana, Escola, Curso,
+   Nome) na lista de aprovados.
 2. Menu **🎓 Certificados → Processar todos os estados** (ou
    **Processar um estado...** para rodar só um).
 3. Ao final, um resumo mostra quantos certificados foram gerados, quantos já
-   existiam e quantos alunos não foram encontrados na inscrição.
-4. Revise as linhas marcadas `NÃO ENCONTRADO NA INSCRIÇÃO`, corrija o CPF/nome
-   e rode de novo — só as pendências são reprocessadas.
+   existiam, quantos alunos não foram encontrados e quantos nomes ficaram
+   ambíguos.
+4. Revise as linhas marcadas `NÃO ENCONTRADO NA INSCRIÇÃO` (grafia do nome
+   diferente da inscrição) e `NOME AMBÍGUO` (confira o curso ou preencha o
+   CPF/e-mail) e rode de novo — só as pendências são reprocessadas.
 
 Use **🎓 Certificados → Validar configuração** sempre que adicionar um estado
 ou trocar um template: ele confere todos os IDs sem gerar nada.
 
 ## 6. Detalhes de funcionamento
 
-- **Ordem de busca do aluno**: CPF (só dígitos, com zero à esquerda) →
-  e-mail (minúsculas) → nome normalizado (maiúsculas, sem acentos e sem
-  espaços duplicados). Se o aluno se inscreveu duas vezes, vale a inscrição
-  mais recente. Inscrições com CPF inválido (ex.: "Incompleto") continuam
-  encontráveis por e-mail e nome.
+- **Busca do aluno**: pelo nome normalizado (maiúsculas, sem acentos e sem
+  espaços duplicados). Se CPF ou e-mail estiverem preenchidos na lista de
+  aprovados, eles têm prioridade por serem únicos. Se o aluno se inscreveu
+  duas vezes, vale a inscrição mais recente.
 - **Homônimos**: quando dois alunos diferentes se inscrevem com o mesmo
-  nome, a busca só por nome não gera certificado — a linha recebe o status
-  `NOME AMBÍGUO — PREENCHA O CPF` para evitar puxar os dados do aluno
-  errado. Preencha o CPF (ou e-mail) e rode de novo.
+  nome, o curso da lista de aprovados desempata. Se ainda assim empatar
+  (mesmo nome e mesmo curso), a linha recebe o status `NOME AMBÍGUO` em vez
+  de arriscar puxar os dados do aluno errado — desempate preenchendo o
+  CPF ou e-mail e rode de novo.
+- **Semana, Escola e Curso** do certificado e da Base de Dados vêm da lista
+  de aprovados (o que o aluno de fato frequentou); os dados pessoais vêm
+  da inscrição.
 - **Sem duplicados**: a Base de Dados guarda a chave estado + CPF (ou nome) +
   curso; alunos já registrados recebem status `JÁ GERADO ANTERIORMENTE`.
 - **Limite de tempo do Apps Script (~6 min)**: em semanas muito grandes o
@@ -151,6 +176,7 @@ ou trocar um template: ele confere todos os IDs sem gerar nada.
 | Sintoma | Causa provável |
 |---------|----------------|
 | "A aba Config não foi encontrada" | A aba de configuração não se chama exatamente `Config`. |
-| Muitos `NÃO ENCONTRADO NA INSCRIÇÃO` | Falta CPF na aba de aprovados e os nomes não batem com o Forms. Preencha a coluna CPF. |
+| Muitos `NÃO ENCONTRADO NA INSCRIÇÃO` | O nome anotado na chamada está abreviado ou faltando sobrenome em relação ao que o aluno digitou no Forms. Complete o nome e rode de novo. |
+| `NOME AMBÍGUO` | Mais de um aluno inscrito com esse nome no mesmo curso. Preencha a coluna CPF ou E-mail da linha para desempatar. |
 | "não foi possível abrir a planilha/pasta/template" | ID errado na aba Config ou a conta que autorizou o script não tem acesso ao arquivo. Use **Validar configuração** para localizar. |
 | O menu 🎓 não aparece | Recarregue a planilha; se persistir, confira se os arquivos foram colados no Apps Script e salvos. |

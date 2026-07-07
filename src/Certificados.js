@@ -3,10 +3,12 @@
  * Google Slides ou Google Docs (substitui o Autocrat).
  *
  * Placeholders aceitos no template (escreva exatamente assim):
- *   {{nome}} {{curso}} {{estado}} {{cpf}} {{email}} {{telefone}}
- *   {{nascimento}} {{idade}} {{data}}
+ *   {{nome}} {{curso}} {{estado}} {{semana}} {{escola}} {{cpf}}
+ *   {{email}} {{telefone}} {{nascimento}} {{idade}} {{data}}
  *
  * {{data}} é a data de geração do certificado (dd/mm/aaaa).
+ * {{semana}}, {{escola}} e {{curso}} vêm da lista de aprovados
+ * (da chamada); os demais, da inscrição.
  */
 
 /**
@@ -24,6 +26,8 @@ function gerarCertificado(registro, cfg) {
     nome: registro.nome,
     curso: registro.curso,
     estado: cfg.estado,
+    semana: registro.semana || '',
+    escola: registro.escola || '',
     cpf: registro.cpf,
     email: registro.email,
     telefone: registro.telefone,

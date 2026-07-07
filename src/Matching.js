@@ -1,10 +1,14 @@
 /**
  * Carregamento das inscrições e cruzamento com os aprovados por frequência.
  *
- * Ordem de busca (da mais confiável para a menos):
- *   1. CPF (apenas dígitos, com zeros à esquerda)
- *   2. E-mail (minúsculas)
- *   3. Nome normalizado (maiúsculas, sem acentos, sem espaços extras)
+ * A busca principal é por NOME normalizado (maiúsculas, sem acentos,
+ * sem espaços extras). Quando existe mais de um aluno inscrito com o
+ * mesmo nome (homônimos), o CURSO informado na lista de aprovados
+ * desempata; se ainda assim houver empate, a linha é marcada como
+ * ambígua para revisão manual (preencher CPF ou e-mail resolve).
+ *
+ * CPF e e-mail, quando preenchidos na lista de aprovados, têm
+ * prioridade sobre o nome por serem únicos por aluno.
  *
  * Quando o mesmo aluno se inscreve mais de uma vez, vale a inscrição
  * mais recente (última linha da planilha do Forms).
@@ -26,7 +30,7 @@ function carregarInscricoes(cfg) {
 
   const valores = aba.getDataRange().getValues();
   if (valores.length < 2) {
-    return { porCpf: {}, porEmail: {}, porNome: {}, nomesAmbiguos: {} };
+    return { porCpf: {}, porEmail: {}, porNome: {} };
   }
 
   const colunas = mapearCabecalhos(valores[0]);
@@ -42,10 +46,10 @@ function carregarInscricoes(cfg) {
 
   const porCpf = {};
   const porEmail = {};
+  // Nome normalizado -> lista de inscrições. Cada item da lista é um
+  // aluno possivelmente diferente (homônimo); inscrições repetidas do
+  // mesmo aluno substituem a anterior (vale a mais recente).
   const porNome = {};
-  // Para detectar homônimos: nome normalizado -> identidades (CPF ou
-  // e-mail) distintas vistas com esse nome.
-  const identidadesPorNome = {};
 
   for (let i = 1; i < valores.length; i++) {
     const linha = valores[i];
@@ -77,30 +81,29 @@ function carregarInscricoes(cfg) {
       porEmail[email] = registro;
     }
 
+    // Dois registros com o mesmo nome são considerados o mesmo aluno
+    // (re-inscrição) quando têm o mesmo CPF/e-mail — ou, na falta dos
+    // dois, o mesmo curso. Caso contrário, são homônimos.
     const nomeNormalizado = normalizarTexto(registro.nome);
-    porNome[nomeNormalizado] = registro;
-    const identidade = cpf || email || 'linha-' + i;
-    if (!identidadesPorNome[nomeNormalizado]) {
-      identidadesPorNome[nomeNormalizado] = {};
+    const identidade = cpf || email || 'CURSO|' + normalizarTexto(registro.curso);
+    if (!porNome[nomeNormalizado]) {
+      porNome[nomeNormalizado] = [];
     }
-    identidadesPorNome[nomeNormalizado][identidade] = true;
+    const lista = porNome[nomeNormalizado];
+    let substituido = false;
+    for (let j = 0; j < lista.length; j++) {
+      if (lista[j].identidade === identidade) {
+        lista[j].registro = registro; // inscrição mais recente vence
+        substituido = true;
+        break;
+      }
+    }
+    if (!substituido) {
+      lista.push({ identidade: identidade, registro: registro });
+    }
   }
 
-  // Nomes que aparecem com mais de um CPF/e-mail são de alunos
-  // diferentes: a busca só por nome não pode decidir entre eles.
-  const nomesAmbiguos = {};
-  Object.keys(identidadesPorNome).forEach(function (nome) {
-    if (Object.keys(identidadesPorNome[nome]).length > 1) {
-      nomesAmbiguos[nome] = true;
-    }
-  });
-
-  return {
-    porCpf: porCpf,
-    porEmail: porEmail,
-    porNome: porNome,
-    nomesAmbiguos: nomesAmbiguos
-  };
+  return { porCpf: porCpf, porEmail: porEmail, porNome: porNome };
 }
 
 /**
@@ -108,11 +111,11 @@ function carregarInscricoes(cfg) {
  *
  * Retorna { registro, nomeAmbiguo }:
  *   - registro: dados da inscrição, ou null se não encontrado;
- *   - nomeAmbiguo: true quando o nome existe nas inscrições mas
- *     pertence a mais de um aluno — é preciso preencher o CPF (ou
- *     e-mail) na aba de aprovados para desempatar.
+ *   - nomeAmbiguo: true quando o nome pertence a mais de um aluno e o
+ *     curso informado na lista de aprovados não bastou para desempatar.
  */
 function buscarInscricao(indices, aprovado) {
+  // CPF e e-mail são únicos por aluno: quando preenchidos, decidem.
   const cpf = normalizarCpf(aprovado.cpf);
   if (cpf && indices.porCpf[cpf]) {
     return { registro: indices.porCpf[cpf], nomeAmbiguo: false };
@@ -124,12 +127,31 @@ function buscarInscricao(indices, aprovado) {
   }
 
   const nome = normalizarTexto(aprovado.nome);
-  if (nome && indices.porNome[nome]) {
-    if (indices.nomesAmbiguos[nome]) {
-      return { registro: null, nomeAmbiguo: true };
-    }
-    return { registro: indices.porNome[nome], nomeAmbiguo: false };
+  const candidatos = (nome && indices.porNome[nome]) || [];
+  if (candidatos.length === 0) {
+    return { registro: null, nomeAmbiguo: false };
+  }
+  if (candidatos.length === 1) {
+    return { registro: candidatos[0].registro, nomeAmbiguo: false };
   }
 
-  return { registro: null, nomeAmbiguo: false };
+  // Homônimos: tenta desempatar pelo curso da chamada. A comparação é
+  // por "contém" nos dois sentidos, porque o curso digitado na chamada
+  // costuma ser mais curto que o nome completo do curso no Forms
+  // (ex.: "PC Gamer" vs "Montagem e Configuração ... (PC GAMER)").
+  const curso = normalizarTexto(aprovado.curso);
+  if (curso) {
+    const doMesmoCurso = candidatos.filter(function (item) {
+      const cursoInscricao = normalizarTexto(item.registro.curso);
+      if (!cursoInscricao) {
+        return false;
+      }
+      return cursoInscricao.indexOf(curso) !== -1 || curso.indexOf(cursoInscricao) !== -1;
+    });
+    if (doMesmoCurso.length === 1) {
+      return { registro: doMesmoCurso[0].registro, nomeAmbiguo: false };
+    }
+  }
+
+  return { registro: null, nomeAmbiguo: true };
 }

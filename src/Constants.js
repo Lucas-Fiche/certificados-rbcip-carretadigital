@@ -22,6 +22,7 @@ const CONFIG_COLS = {
   ESTADO: 'Estado',
   ID_INSCRICOES: 'ID Planilha de Inscrições',
   ABA_INSCRICOES: 'Aba de Inscrições',
+  ID_APROVADOS: 'ID Planilha de Aprovados',
   ABA_APROVADOS: 'Aba de Aprovados',
   ID_PASTA: 'ID da Pasta no Drive',
   ID_TEMPLATE: 'ID do Template',
@@ -44,11 +45,17 @@ const INSCRICAO_COLS = {
   PCD: 'Você é uma pessoa com deficiência (PCD)?'
 };
 
-// Cabeçalhos esperados nas abas de aprovados por frequência.
-// Nome é obrigatório; CPF e E-mail são opcionais, mas tornam o
-// cruzamento muito mais confiável.
+// Cabeçalhos esperados nas abas de aprovados por frequência
+// (preenchidas manualmente a partir da chamada).
+// Nome é obrigatório. Curso desempata alunos homônimos. Estado, CPF e
+// E-mail são opcionais: Estado permite juntar todos os estados numa aba
+// só; CPF/E-mail desempatam homônimos que fazem o mesmo curso.
 const APROVADOS_COLS = {
+  SEMANA: 'Semana',
+  ESCOLA: 'Escola',
+  CURSO: 'Curso',
   NOME: 'Nome',
+  ESTADO: 'Estado',
   CPF: 'CPF',
   EMAIL: 'E-mail',
   STATUS: 'Status',
@@ -60,15 +67,17 @@ const STATUS = {
   GERADO: 'CERTIFICADO GERADO',
   JA_EXISTIA: 'JÁ GERADO ANTERIORMENTE',
   NAO_ENCONTRADO: 'NÃO ENCONTRADO NA INSCRIÇÃO',
-  // Existe mais de um aluno inscrito com esse mesmo nome; sem o CPF
-  // (ou e-mail) não dá para saber qual é o certo.
-  AMBIGUO: 'NOME AMBÍGUO — PREENCHA O CPF'
+  // Existe mais de um aluno inscrito com esse mesmo nome e o curso
+  // informado não bastou para desempatar.
+  AMBIGUO: 'NOME AMBÍGUO — CONFIRA O CURSO OU PREENCHA O CPF'
 };
 
 // Cabeçalhos da aba Base de Dados (criada automaticamente)
 const BASE_DADOS_HEADERS = [
   'Data de Processamento',
   'Estado',
+  'Semana',
+  'Escola',
   'Curso',
   'Nome',
   'CPF',

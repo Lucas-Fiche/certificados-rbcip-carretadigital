@@ -53,6 +53,8 @@ function registrarNaBase(baseDados, cfg, registro, linkCertificado) {
   baseDados.aba.appendRow([
     dataDeHoje(),
     cfg.estado,
+    registro.semana || '',
+    registro.escola || '',
     registro.curso,
     registro.nome,
     registro.cpf,

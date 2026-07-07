@@ -104,8 +104,12 @@ function executarProcessamento(filtroEstado) {
  * de tempo de execução foi atingido no meio do processamento.
  */
 function processarEstado(cfg, baseDados, totais, erros, inicio) {
-  const planilhaMestre = SpreadsheetApp.getActiveSpreadsheet();
-  const abaAprovados = planilhaMestre.getSheetByName(cfg.abaAprovados);
+  // A lista de aprovados pode estar em outra planilha (coluna
+  // "ID Planilha de Aprovados" da Config) ou na própria mestre.
+  const planilhaAprovados = cfg.idAprovados
+    ? SpreadsheetApp.openById(cfg.idAprovados)
+    : SpreadsheetApp.getActiveSpreadsheet();
+  const abaAprovados = planilhaAprovados.getSheetByName(cfg.abaAprovados);
   if (!abaAprovados) {
     throw new Error('aba de aprovados "' + cfg.abaAprovados + '" não encontrada.');
   }
@@ -127,14 +131,31 @@ function processarEstado(cfg, baseDados, totais, erros, inicio) {
 
   const indices = carregarInscricoes(cfg);
 
+  const pegar = function (linha, nomeColuna) {
+    return nomeColuna in colunas && colunas[nomeColuna] < linha.length
+      ? String(linha[colunas[nomeColuna]] || '').trim()
+      : '';
+  };
+  // Se a aba tiver uma coluna "Estado", cada estado da Config processa
+  // apenas as suas linhas — permite juntar todos numa aba única.
+  const temColunaEstado = APROVADOS_COLS.ESTADO in colunas;
+  const estadoNormalizado = normalizarTexto(cfg.estado);
+
   for (let i = 1; i < valores.length; i++) {
     const linha = valores[i];
     const aprovado = {
-      nome: String(linha[colunas[APROVADOS_COLS.NOME]] || '').trim(),
-      cpf: APROVADOS_COLS.CPF in colunas ? linha[colunas[APROVADOS_COLS.CPF]] : '',
-      email: APROVADOS_COLS.EMAIL in colunas ? linha[colunas[APROVADOS_COLS.EMAIL]] : ''
+      nome: pegar(linha, APROVADOS_COLS.NOME),
+      semana: pegar(linha, APROVADOS_COLS.SEMANA),
+      escola: pegar(linha, APROVADOS_COLS.ESCOLA),
+      curso: pegar(linha, APROVADOS_COLS.CURSO),
+      cpf: pegar(linha, APROVADOS_COLS.CPF),
+      email: pegar(linha, APROVADOS_COLS.EMAIL)
     };
     if (!aprovado.nome) {
+      continue;
+    }
+    if (temColunaEstado &&
+        normalizarTexto(pegar(linha, APROVADOS_COLS.ESTADO)) !== estadoNormalizado) {
       continue;
     }
 
@@ -163,7 +184,14 @@ function processarEstado(cfg, baseDados, totais, erros, inicio) {
       }
       continue;
     }
-    const registro = busca.registro;
+    // No certificado e na base valem a semana, a escola e o curso da
+    // chamada (o que o aluno de fato frequentou); os demais dados vêm
+    // da inscrição.
+    const registro = Object.assign({}, busca.registro, {
+      semana: aprovado.semana,
+      escola: aprovado.escola,
+      curso: aprovado.curso || busca.registro.curso
+    });
 
     const chave = chaveBaseDados(cfg.estado, registro.cpf, registro.nome, registro.curso);
     if (baseDados.chaves[chave]) {
